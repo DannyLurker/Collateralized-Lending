@@ -1,0 +1,25 @@
+1. PS D:\belajarPemograman\Solidity_Project\Decentralized Collateralized Lending Protocol> npx hardhat test test/collateralAndLoanTest.ts
+Compiled 3 Solidity files successfully (evm target: paris).
+
+
+  Collateral And Loan 
+    Deposit Collateral
+      1) Only user can make a deposit collateral
+
+
+  0 passing (229ms)
+  1 failing
+
+  1) Collateral And Loan
+       Deposit Collateral
+         Only user can make a deposit collateral:
+     Error: VM Exception while processing transaction: reverted with custom error 'ERC20InsufficientAllowance("0xeEBe00Ac0756308ac4AaBfD76c05c4F3088B8883", 0, 3000000000000000000000)'
+    at StableToken._spendAllowance (@openzeppelin/contracts/token/ERC20/ERC20.sol:304)
+    at StableToken.transferFrom (@openzeppelin/contracts/token/ERC20/ERC20.sol:150)
+    at StableToken.tokenTransferFrom (contracts/StableToken.sol:60)
+    at LoanManager.depositCollateral (contracts/LoanManager.sol:72)
+    at EdrProviderWrapper.request (node_modules\hardhat\src\internal\hardhat-network\provider\provider.ts:359:41)
+    at async HardhatEthersSigner.sendTransaction (node_modules\@nomicfoundation\hardhat-ethers\src\signers.ts:181:18)
+    at async send (node_modules\ethers\src.ts\contract\contract.ts:313:20)
+    at async Proxy.depositCollateral (node_modules\ethers\src.ts\contract\contract.ts:352:16)
+    at async Context.<anonymous> (test\collateralAndLoanTest.ts:79:9)
