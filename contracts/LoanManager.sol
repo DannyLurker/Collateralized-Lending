@@ -68,7 +68,8 @@ contract LoanManager {
             msg.value
         );
 
-        // Perlu di approve dulu, jika ingin di gunakan
+        // Perlu di approve dulu LoanManager contractnya, jika ingin di gunakan
+        // Kenapa LoanManager perlu di approve ? Karena LoanManager lah yang memanggil contract stableToken berserta function transferForm
         stableToken.tokenTransferFrom(
             stableTokenAddress,
             msg.sender,

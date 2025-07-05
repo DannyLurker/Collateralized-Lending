@@ -31,7 +31,7 @@ contract StableToken is ERC20, ERC20Burnable, ERC20Pausable, AccessControl {
         _grantRole(PAUSER_ROLE, initialOwner);
 
         uint256 initialSupply = 1_000_000_000 * 10 ** decimals();
-        _mint(initialOwner, initialSupply);
+        _mint(address(this), initialSupply);
     }
 
     function mint(address to, uint256 amount) public {
@@ -61,10 +61,24 @@ contract StableToken is ERC20, ERC20Burnable, ERC20Pausable, AccessControl {
         emit TranferToken(from, to, value);
     }
 
+    function approveLoanManagerUnlimited(address loanManager) external {
+        require(
+            hasRole(DEFAULT_ADMIN_ROLE, msg.sender) ||
+                balanceOf(msg.sender) > 0,
+            "No admin role"
+        );
+        _approve(address(this), loanManager, type(uint256).max);
+    }
+
     function approve(
         address spender,
         uint256 amount
     ) public virtual override returns (bool) {
+        require(
+            hasRole(DEFAULT_ADMIN_ROLE, msg.sender) ||
+                balanceOf(msg.sender) > 0,
+            "No admin role"
+        );
         _approve(_msgSender(), spender, amount);
         return true;
     }

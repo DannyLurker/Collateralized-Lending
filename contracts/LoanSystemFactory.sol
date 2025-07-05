@@ -53,6 +53,9 @@ contract LoanSystemFactory {
         // 5. Grant MINTER_ROLE ke LoanManager (Factory punya admin role)
         stableToken.grantRole(stableToken.MINTER_ROLE(), loanManagerAddress);
 
+        // 5.5. Approve LoanManager untuk menggunakan token dari StableToken contract
+        stableToken.approveLoanManagerUnlimited(loanManagerAddress);
+
         // 6. Transfer ownership ke user dan renounce factory admin
         stableToken.grantRole(stableToken.DEFAULT_ADMIN_ROLE(), msg.sender);
         stableToken.renounceRole(

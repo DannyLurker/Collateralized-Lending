@@ -81,7 +81,10 @@ contract CollateralVault {
         emit UserWithdrawCollateral(user, userCollateralInfo, _ether);
     }
 
-    function decreaseUserCollateral(address user, uint256 _ether) public {
+    function decreaseUserCollateral(
+        address user,
+        uint256 _ether
+    ) public onlyLoanManager {
         require(
             userCollateral[user] >= _ether,
             "Refund amount exceeds allowable limit."
