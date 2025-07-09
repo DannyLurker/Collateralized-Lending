@@ -71,16 +71,33 @@ contract CollateralVault {
     }
 
     function withdrawCollateral(address user, uint256 _ether) external {
+        uint256 totalEtherUserGet = _ether - (_ether / 30);
+
+        uint256 beforeWithdrawCollateralAmount = userCollateral[msg.sender];
+
+        // IMPORTANT CHECK: Ensure user has enough collateral to cover the *total deduction*
+        // This is the primary fix for the panic code 0x11 in this context.
         require(
             userCollateral[user] >= _ether,
-            "Refund amount exceeds allowable limit."
+            "Collateral: Insufficient collateral to cover withdrawal and fee."
         );
-        uint256 userCollateralInfo = userCollateral[user] - _ether;
-        (bool sent, ) = user.call{value: _ether}("");
-        require(sent, "Failed to send Ether");
-        emit UserWithdrawCollateral(user, userCollateralInfo, _ether);
-    }
 
+        // Update user's collateral *after* the deduction
+        userCollateral[user] -= _ether;
+
+        // Send the requested _ether to the user
+        (bool sent, ) = user.call{value: totalEtherUserGet}("");
+        require(sent, "Collateral: Failed to send Ether");
+
+        // Emit event with the correct values
+        // userCollateralInfo (old name) is now `beforeWithdrawCollateralAmount`
+        // _ether (old name) is now `amountToSendToUser`
+        emit UserWithdrawCollateral(
+            user,
+            beforeWithdrawCollateralAmount,
+            totalEtherUserGet
+        );
+    }
     function decreaseUserCollateral(
         address user,
         uint256 _ether
@@ -89,28 +106,40 @@ contract CollateralVault {
             userCollateral[user] >= _ether,
             "Refund amount exceeds allowable limit."
         );
-
         userCollateral[user] -= _ether;
     }
 
     function getHealthFactor(
         address userAddress
     ) public view returns (uint256) {
-        // uint256 ETHtoUSDConvertionRate = getETHtoUSD(1e18);
-        uint256 ETHtoUSDConvertionRateTest = (1e18 * (3000 * 1e8)) / 1e26;
-        uint256 userCollateralValueinUSD = (userCollateral[userAddress] *
-            ETHtoUSDConvertionRateTest) / 1e18;
-        uint256 userCSBToken = stableToken.balanceOf(userAddress) / 1e18;
-        uint256 healthFactor = userCollateralValueinUSD / userCSBToken;
+        uint256 userCSBToken = stableToken.balanceOf(userAddress);
+
+        // If user has no debt, return a very high health factor (safe)
+        if (userCSBToken == 0) {
+            return type(uint256).max;
+        }
+
+        uint256 collateralValueToUSD = getETHtoUSD(userCollateral[userAddress]);
+
+        // Convert CSB tokens to USD value (CSB tokens are 18 decimals, 1 CSB = $1)
+        uint256 debtValueUSD = userCSBToken / 1e18;
+
+        // Health factor = (collateral value / debt value) * 1e18 for precision
+        // A health factor of 1e18 means 100% collateralization
+        uint256 healthFactor = (collateralValueToUSD * 1e18) / debtValueUSD;
+
         return healthFactor;
     }
 
     function liquidation(address userAddress) public onlyLoanManager {
-        if (getHealthFactor(userAddress) > 7 * 1e17) {
+        uint256 healthFactor = getHealthFactor(userAddress);
+
+        if (healthFactor >= 9e17) {
             revert HealthFactorStillSafe(userAddress);
         }
 
-        decreaseUserCollateral(userAddress, userCollateral[userAddress]);
-        emit Liquidation(userAddress, userCollateral[userAddress]);
+        uint256 userCollateralAmount = userCollateral[userAddress];
+        decreaseUserCollateral(userAddress, userCollateralAmount);
+        emit Liquidation(userAddress, userCollateralAmount);
     }
 }

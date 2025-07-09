@@ -7,10 +7,6 @@ import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Pausable.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 
 contract StableToken is ERC20, ERC20Burnable, ERC20Pausable, AccessControl {
-    // Jika langsung menggunakan string MINTER_ROLE tanpa dihash, maka tidak akan kompatibe dengan struktur penyimpanan OpenZepppelin AccessControl yang hanya mengenali bytes32 sebagai key.
-
-    //DEFAULT_ADMIN_ROLE tidak perlu dideklarasi DEFAULT_ADMIN_ROLE adalah konstanta built-in dari OpenZeppelin,Sedangkan MINTER_ROLE dan PAUSER_ROLE adalah custom role, jadi harus dideklarasi:
-
     bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
     bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
     address public ownerAddress;
@@ -35,19 +31,31 @@ contract StableToken is ERC20, ERC20Burnable, ERC20Pausable, AccessControl {
     }
 
     function mint(address to, uint256 amount) public {
-        require(hasRole(MINTER_ROLE, msg.sender), "No minter role");
+        require(
+            hasRole(MINTER_ROLE, msg.sender) ||
+                hasRole(DEFAULT_ADMIN_ROLE, msg.sender),
+            "No minter or admin role"
+        );
         emit Mint(to, amount);
         _mint(to, amount);
     }
 
     function pause() public {
-        require(hasRole(PAUSER_ROLE, msg.sender), "No pauser role");
+        require(
+            hasRole(PAUSER_ROLE, msg.sender) ||
+                hasRole(DEFAULT_ADMIN_ROLE, msg.sender),
+            "No pauser or admin role"
+        );
         emit Pause(msg.sender);
         _pause();
     }
 
     function unpause() public {
-        require(hasRole(PAUSER_ROLE, msg.sender), "No pauser role");
+        require(
+            hasRole(PAUSER_ROLE, msg.sender) ||
+                hasRole(DEFAULT_ADMIN_ROLE, msg.sender),
+            "No pauser or admin role"
+        );
         emit Unpause(msg.sender);
         _unpause();
     }
@@ -62,25 +70,14 @@ contract StableToken is ERC20, ERC20Burnable, ERC20Pausable, AccessControl {
     }
 
     function approveLoanManagerUnlimited(address loanManager) external {
-        require(
-            hasRole(DEFAULT_ADMIN_ROLE, msg.sender) ||
-                balanceOf(msg.sender) > 0,
-            "No admin role"
-        );
+        require(hasRole(DEFAULT_ADMIN_ROLE, msg.sender), "No admin role");
         _approve(address(this), loanManager, type(uint256).max);
     }
 
-    function approve(
-        address spender,
-        uint256 amount
-    ) public virtual override returns (bool) {
-        require(
-            hasRole(DEFAULT_ADMIN_ROLE, msg.sender) ||
-                balanceOf(msg.sender) > 0,
-            "No admin role"
-        );
-        _approve(_msgSender(), spender, amount);
-        return true;
+    // ADD: Special function for contract to approve itself for transfers
+    function approveContractTransfer(address spender, uint256 amount) external {
+        require(hasRole(DEFAULT_ADMIN_ROLE, msg.sender), "No admin role");
+        _approve(address(this), spender, amount);
     }
 
     function _update(

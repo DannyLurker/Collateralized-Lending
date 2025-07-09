@@ -42,7 +42,7 @@ describe("StableToken Contract", () => {
         const amountToMint = ethers.parseUnits("100", 18);
         await expect(
           stableTokenContract.connect(user1).mint(deployer, amountToMint)
-        ).to.be.revertedWith("No minter role");
+        ).to.be.revertedWith("No minter or admin role");
       });
     });
 
@@ -64,7 +64,7 @@ describe("StableToken Contract", () => {
       it("An Account without a PAUSER_ROLE shouldn't be able to make a puase", async () => {
         await expect(
           stableTokenContract.connect(user1).pause()
-        ).to.be.revertedWith("No pauser role");
+        ).to.be.revertedWith("No pauser or admin role");
       });
 
       it("An Account with a PAUSER_ROLE shouldn't be able to make a unpuase", async () => {
@@ -72,7 +72,7 @@ describe("StableToken Contract", () => {
 
         await expect(
           stableTokenContract.connect(user1).unpause()
-        ).to.be.revertedWith("No pauser role");
+        ).to.be.revertedWith("No pauser or admin role");
       });
     });
 
@@ -81,12 +81,14 @@ describe("StableToken Contract", () => {
         //Amount to transfer
         const amountToTransfer = ethers.parseUnits("1000", 18);
 
-        // Approval
-        expect(
-          await stableTokenContract
-            .connect(deployer)
-            .approve(deployer.address, amountToTransfer)
-        );
+        // Get contract address
+        const contractAddress = await stableTokenContract.getAddress();
+
+        // FIXED: Use the new approveContractTransfer function
+        // This allows the contract to approve the deployer to spend tokens from the contract
+        await stableTokenContract
+          .connect(deployer)
+          .approveContractTransfer(deployer.address, amountToTransfer);
 
         // Check Supply
         const totalSupplyStableTokenContractbefore =
@@ -99,16 +101,17 @@ describe("StableToken Contract", () => {
           amountToTransfer
         );
 
-        // TransferFrom
-        expect(
-          await stableTokenContract.transferFrom(
-            deployer.address,
+        // FIXED: Use the contract address as the 'from' address
+        // TransferFrom - now this should work because we approved the deployer to spend from contract
+        await expect(
+          stableTokenContract.transferFrom(
+            contractAddress,
             user1.address,
             amountToTransfer
           )
-        ).to.emit(stableTokenContract, "TransferToken");
+        ).to.emit(stableTokenContract, "Transfer"); // Use the standard ERC20 Transfer event
 
-        // Kenapa tidak berkurang supply nya ? Karena kita menggunakan function transferForm yang dimana hanya memindahkan supply, supply akan berkurang jika terjadi burn, dan akan bertambah jika terjadi mint
+        // Check balances after transfer
         const totalSupplyStableTokenContractAfter =
           await stableTokenContract.totalSupply();
 
@@ -126,7 +129,6 @@ describe("StableToken Contract", () => {
           totalCOLStableUserAddressBefore
         );
 
-        // Kenapa tidak berkurang supply nya ? Karena kita menggunakan function transferForm yang dimana hanya memindahkan supply, supply akan berkurang jika terjadi burn, dan akan bertambah jika terjadi mint
         console.log(
           "Total supply Stable Token contract after: ",
           totalSupplyStableTokenContractAfter
@@ -136,6 +138,43 @@ describe("StableToken Contract", () => {
           "Total COLStable user address after : ",
           totalCOLStableUserAddressAfter
         );
+
+        // Verify the transfer worked
+        expect(totalCOLStableUserAddressAfter).to.equal(
+          totalCOLStableUserAddressBefore + amountToTransfer
+        );
+      });
+
+      it("Regular user should be able to approve and transfer their own tokens", async () => {
+        // First, mint some tokens to user1
+        const amountToMint = ethers.parseUnits("500", 18);
+        await stableTokenContract.connect(deployer).mint(user1, amountToMint);
+
+        // Now user1 should be able to approve and transfer normally
+        const amountToTransfer = ethers.parseUnits("100", 18);
+
+        // User1 approves deployer to spend their tokens
+        await stableTokenContract
+          .connect(user1)
+          .approve(deployer.address, amountToTransfer);
+
+        // Deployer transfers from user1 to deployer
+        await expect(
+          stableTokenContract.transferFrom(
+            user1.address,
+            deployer.address,
+            amountToTransfer
+          )
+        ).to.emit(stableTokenContract, "Transfer");
+
+        // Verify balances
+        const user1Balance = await stableTokenContract.balanceOf(user1.address);
+        const deployerBalance = await stableTokenContract.balanceOf(
+          deployer.address
+        );
+
+        expect(user1Balance).to.equal(amountToMint - amountToTransfer);
+        expect(deployerBalance).to.equal(amountToTransfer);
       });
     });
   });

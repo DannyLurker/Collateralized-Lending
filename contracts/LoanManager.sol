@@ -55,9 +55,8 @@ contract LoanManager {
             revert InsufficientBalance(msg.sender);
         }
 
-        // uint256 ETHtoUSDConvertionRate = getETHtoUSD(msg.value);
-        uint256 ETHtoUSDConvertionRateTest = (msg.value * (3000 * 1e8)) / 1e26;
-        uint256 CBSTokenAmount = ETHtoUSDConvertionRateTest * 1e18;
+        uint256 ETHtoUSDConvertionRate = getETHtoUSD(msg.value);
+        uint256 CBSTokenAmount = ETHtoUSDConvertionRate * 1e18;
 
         if (stableToken.totalSupply() <= CBSTokenAmount) {
             revert InsufficientSupply(stableTokenAddress);
@@ -81,10 +80,9 @@ contract LoanManager {
     }
 
     function unlockCollateral(uint256 csbToken) external payable onlyUser {
-        // uint256 ETHtoUSDConvertionRate = getETHtoUSD(1e18);
-        uint256 ETHtoUSDConvertionRateTest = (1e18 * (3000 * 1e8)) / 1e26;
-        uint256 CSBTokenToETH = ((csbToken / 1e18) /
-            ETHtoUSDConvertionRateTest) * 1e18;
+        uint256 ETHtoUSDConvertionRate = getETHtoUSD(1e18);
+        uint256 CSBTokenToETH = ((csbToken / 1e18) / ETHtoUSDConvertionRate) *
+            1e18;
 
         if (stableToken.balanceOf(msg.sender) < csbToken) {
             revert InsufficientBalance(msg.sender);
@@ -95,7 +93,6 @@ contract LoanManager {
 
         collateralVault.withdrawCollateral(msg.sender, CSBTokenToETH);
 
-        collateralVault.decreaseUserCollateral(msg.sender, CSBTokenToETH);
         emit DecreaseCollateral(msg.sender, CSBTokenToETH);
     }
 }

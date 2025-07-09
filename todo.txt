@@ -1,0 +1,4 @@
+1. Make an interest system => Selesai
+2. Make a Collateral test => Belum Selesai
+3. web3js + nextjs => Belum Selesai
+

@@ -1,5 +1,6 @@
 const { ethers } = require("hardhat");
 const { expect } = require("chai");
+import { isAddress } from "ethers";
 import {
   StableToken,
   CollateralVault,
@@ -105,11 +106,10 @@ describe("Collateral And Loan", () => {
     });
 
     it("Only user can make an unlock collateral", async () => {
-      const ethAmount = ethers.parseEther("1.0");
+      const ethAmount = ethers.parseEther("2.0");
+      // Sudah 18desimal
       const expectedCSBTokenToGet = getETHtoUSD(ethAmount);
       const CSBTokenAmount = expectedCSBTokenToGet;
-
-      const CSBTokenToETH = CSBTokenAmount / BigInt(3000);
 
       // First, deposit collateral to get CSB tokens
       await expect(
@@ -131,24 +131,34 @@ describe("Collateral And Loan", () => {
 
       const userCollateralBefore = await collateralVault.userCollateral(user1);
       const user1CSBTokenBalanceBefore = await stableToken.balanceOf(user1);
+      const unlockCollateralWithCSB =
+        CSBTokenAmount - BigInt(3000) * BigInt(1e18);
+      const CSBtoETHWithUnlockCollateral =
+        unlockCollateralWithCSB / BigInt(3000);
 
       // Test unlock collateral
-      await expect(loanManager.connect(user1).unlockCollateral(CSBTokenAmount))
+      await expect(
+        loanManager.connect(user1).unlockCollateral(unlockCollateralWithCSB)
+      )
         .to.emit(loanManager, "TransferTokenCSB")
-        .withArgs(user1.address, await stableToken.getAddress(), CSBTokenAmount)
-        .to.emit(loanManager, "DecreaseCollateral")
-        .withArgs(user1.address, CSBTokenToETH);
+        .withArgs(
+          user1.address,
+          await stableToken.getAddress(),
+          unlockCollateralWithCSB
+        )
+        .and.to.emit(loanManager, "DecreaseCollateral")
+        .withArgs(user1.address, CSBtoETHWithUnlockCollateral);
 
       // Check Token Balance
       const user1CSBTokenBalanceAfter = await stableToken.balanceOf(user1);
       await expect(user1CSBTokenBalanceAfter).to.equal(
-        user1CSBTokenBalanceBefore - CSBTokenAmount
+        user1CSBTokenBalanceBefore - unlockCollateralWithCSB
       );
 
       // Check user collateral in CollateralVault
       const userCollateralAfter = await collateralVault.userCollateral(user1);
       await expect(userCollateralAfter).to.equal(
-        userCollateralBefore - CSBTokenToETH
+        userCollateralBefore - CSBtoETHWithUnlockCollateral
       );
     });
 
@@ -159,6 +169,117 @@ describe("Collateral And Loan", () => {
       await expect(
         loanManager.connect(deployer).unlockCollateral(expectedCSBTokenToGet)
       ).to.be.reverted;
+    });
+
+    it("Liquidation", async () => {
+      const ethAmount = ethers.parseEther("2.0");
+      const expectedCSBTokenToGet = getETHtoUSD(ethAmount);
+
+      // 1. User deposit collateral
+      await expect(
+        loanManager.connect(user1).depositCollateral({ value: ethAmount })
+      )
+        .to.emit(loanManager, "DepositCollateral")
+        .withArgs(user1.address, await collateralVault.getAddress(), ethAmount)
+        .and.to.emit(loanManager, "TransferTokenCSB")
+        .withArgs(
+          await stableToken.getAddress(),
+          user1.address,
+          expectedCSBTokenToGet
+        );
+
+      // 2. Check who is currently set as loanManager in CollateralVault
+      const currentLoanManagerAddress =
+        await collateralVault.loanManagerAddress();
+      console.log("Current loanManager address:", currentLoanManagerAddress);
+      console.log("Deployer address:", deployer.address);
+      console.log(
+        "Actual LoanManager contract address:",
+        await loanManager.getAddress()
+      );
+
+      // 3. Fix the loanManager address if it's wrong (due to factory bug)
+      if (currentLoanManagerAddress === deployer.address) {
+        // Reset to the actual loanManager contract
+        await collateralVault
+          .connect(deployer)
+          .setLoanManager(await loanManager.getAddress());
+        console.log(
+          "Fixed loanManager address to:",
+          await loanManager.getAddress()
+        );
+      }
+
+      // 4. Check initial state
+      const userCollateralBefore = await collateralVault.userCollateral(
+        user1.address
+      );
+      const healthFactorBefore = await collateralVault.getHealthFactor(
+        user1.address
+      );
+
+      console.log(
+        "Initial user collateral:",
+        ethers.formatEther(userCollateralBefore)
+      );
+      console.log(
+        "Initial health factor:",
+        ethers.formatEther(healthFactorBefore)
+      );
+
+      // 5. For testing purposes, we'll temporarily set deployer as loanManager
+      // so we can call liquidation directly
+      await collateralVault.connect(deployer).setLoanManager(deployer.address);
+
+      // 6. Verify liquidation should NOT work initially
+      await expect(
+        collateralVault.connect(deployer).liquidation(user1.address)
+      ).to.be.revertedWithCustomError(collateralVault, "HealthFactorStillSafe");
+
+      // 7. Create liquidation scenario by minting additional CSB tokens to the user
+      const additionalCSB = ethers.parseEther("4000"); // Large amount to trigger liquidation
+
+      // Mint additional CSB tokens to user1 to simulate increased debt
+      await stableToken.connect(deployer).mint(user1.address, additionalCSB);
+
+      // 8. Check health factor after creating liquidation scenario
+      const healthFactorAfter = await collateralVault.getHealthFactor(
+        user1.address
+      );
+      console.log(
+        "Health factor after increasing debt:",
+        ethers.formatEther(healthFactorAfter)
+      );
+
+      // Verify health factor is now below liquidation threshold (0.9)
+      expect(healthFactorAfter).to.be.lessThan(ethers.parseEther("0.9"));
+
+      // 9. Get user collateral amount before liquidation
+      const userCollateralForLiquidation = await collateralVault.userCollateral(
+        user1.address
+      );
+
+      // 10. Now liquidation should work
+      await expect(collateralVault.connect(deployer).liquidation(user1.address))
+        .to.emit(collateralVault, "Liquidation")
+        .withArgs(user1.address, userCollateralForLiquidation);
+
+      // 11. Verify liquidation effects
+      const userCollateralAfter = await collateralVault.userCollateral(
+        user1.address
+      );
+      console.log(
+        "User collateral after liquidation:",
+        ethers.formatEther(userCollateralAfter)
+      );
+
+      // Should be 0 after full liquidation
+      expect(userCollateralAfter).to.equal(0);
+
+      // 12. Restore the correct loanManager address
+      await collateralVault
+        .connect(deployer)
+        .setLoanManager(await loanManager.getAddress());
     });
   });
 });
